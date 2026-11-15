@@ -1,5 +1,5 @@
 /**
- * The slink tunnel: one outbound WebSocket to Lapseed, authenticated by Ed25519
+ * The slink tunnel: one outbound WebSocket to a relay server, authenticated by Ed25519
  * challenge-response, auto-reconnecting with exponential backoff + full jitter, and
  * multiplexing visitor HTTP requests / WebSockets onto the *locked* local target.
  */
@@ -123,7 +123,7 @@ export class SlinkTunnel {
       ws = new WebSocket(this.o.relay, {
         handshakeTimeout: 15_000,
         perMessageDeflate: false,
-        // Lapseed caps bodies at 50 MB (base64 ≈ 1.37×); keep headroom but bound memory.
+        // Room for a 50 MB body in base64 (≈ 1.37×) with headroom, while still bounding memory.
         maxPayload: 100 * 1024 * 1024,
       });
     } catch (err) {
@@ -169,9 +169,9 @@ export class SlinkTunnel {
       }
       const why =
         code === RelayClose.AUTH_FAILED
-          ? `authentication rejected (${reason || 'is this node_id + public key bound in Lapseed settings?'})`
+          ? `authentication rejected (${reason || 'is this node_id + public key registered with the relay?'})`
           : code === RelayClose.UNBOUND
-            ? 'node binding changed in Lapseed'
+            ? 'node binding changed on the relay'
             : `closed (${code}${reason ? ` ${reason}` : ''})`;
       this.scheduleReconnect(why);
     });

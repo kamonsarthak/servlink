@@ -39,7 +39,7 @@ describe('header sanitisation', () => {
     const t = lockTarget('127.0.0.1', 3000);
     const h = sanitizeHeaders(
       {
-        host: 'lapseed.app',
+        host: 'relay.example',
         'x-forwarded-for': '1.2.3.4',
         'X-Forwarded-Prefix': '/project/x',
         'x-real-ip': '1.2.3.4',
@@ -55,8 +55,8 @@ describe('header sanitisation', () => {
       t,
     );
     assert.deepEqual(h, { cookie: 'a=1', accept: 'text/html', host: '127.0.0.1:3000', 'x-servlink-verified': '1' });
-    const ws = sanitizeHeaders({ 'sec-websocket-key': 'k', 'sec-websocket-protocol': 'vite-hmr', origin: 'https://lapseed.app' }, t, { websocket: true });
-    assert.deepEqual(ws, { origin: 'https://lapseed.app', host: '127.0.0.1:3000', 'x-servlink-verified': '1' });
+    const ws = sanitizeHeaders({ 'sec-websocket-key': 'k', 'sec-websocket-protocol': 'vite-hmr', origin: 'https://relay.example' }, t, { websocket: true });
+    assert.deepEqual(ws, { origin: 'https://relay.example', host: '127.0.0.1:3000', 'x-servlink-verified': '1' });
   });
 });
 

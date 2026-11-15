@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 /**
- * slink — connect a local port to Lapseed through an outbound, Ed25519-authenticated tunnel.
+ * slink — expose a local port through an outbound, Ed25519-authenticated tunnel to a relay server.
  *
  *   slink init [--node-id <id>] [--force]
- *   slink connect --port <n> [--host 127.0.0.1] [--relay wss://lapseed.app/tunnel]
+ *   slink connect --port <n> [--host 127.0.0.1] [--relay wss://relay.example.com/tunnel]
  *                 [--max-rps 30] [--max-body-mb 5] [--wake-cmd "<cmd>"] [--sleep-cmd "<cmd>"] [--idle-minutes 15]
  *   slink status
  *   slink logs [-n 50] [--no-follow]
  */
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
-import { GuardError, lockTarget } from './guard.js';
+import { GuardError, lockTarget, type Target } from './guard.js';
 import { createIdentity, identityPermissionWarning, loadIdentity, privateKeyOf, saveIdentity } from './identity.js';
 import { followFile, RequestLog, tailLines } from './logs.js';
 import { paths } from './paths.js';
@@ -18,7 +18,7 @@ import { activeDaemon, clearDaemonState, DEFAULTS, loadConfig, saveConfig, write
 import { SlinkTunnel, type TunnelState } from './tunnel.js';
 import { WakeManager } from './wake.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 
 const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
 const paint = (code: string) => (s: string | number) => (color ? `\x1b[${code}m${s}\x1b[0m` : String(s));
@@ -58,10 +58,9 @@ function cmdInit(argv: string[]): void {
   out(`  ${c.dim('public_key')} ${c.bold(id.public_key_hex)}`);
   out(`  ${c.dim('  base64  ')} ${id.public_key_base64}`);
   out();
-  out(`${c.orange('Next:')} paste both values into ${c.bold('Lapseed → Settings → Server')},`);
-  out(`or call ${c.dim('PUT https://lapseed.com/api/users/server')} with:`);
+  out(`${c.orange('Next:')} register your node_id and Ed25519 public key with your relay:`);
   out(c.dim(`  {"node_id":"${id.node_id}","public_key":"${id.public_key_hex}"}`));
-  out(`then run ${c.green('slink connect --port <your-app-port>')}.`);
+  out(`then run ${c.green('slink connect --port <your-app-port> --relay wss://<your-relay>/tunnel')}.`);
   out(c.dim('PEM form of the public key, if you need it:'));
   out(c.dim(id.public_key_pem.trim()));
 }
@@ -80,7 +79,7 @@ async function ask(rl: ReturnType<typeof createInterface>, q: string, def?: stri
   return answer || (def !== undefined ? String(def) : '');
 }
 
-async function resolveConnectConfig(argv: string[]): Promise<{ cfg: SavedConfig; force: boolean }> {
+async function resolveConnectConfig(argv: string[]): Promise<{ cfg: SavedConfig; target: Target; force: boolean }> {
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -98,36 +97,48 @@ async function resolveConnectConfig(argv: string[]): Promise<{ cfg: SavedConfig;
   const saved = loadConfig();
   let port = num('port', values.port, 1, 65535);
   let host = values.host;
-  let relay = values.relay;
+  // Relay precedence: --relay, then SERVLINK_RELAY_URL, then the saved config, then a prompt (TTY only).
+  let relay = values.relay?.trim() || process.env.SERVLINK_RELAY_URL?.trim() || saved?.relay?.trim() || undefined;
+  let target: Target;
 
-  if (port === undefined) {
-    if (process.stdin.isTTY) {
-      const rl = createInterface({ input: process.stdin, output: process.stdout });
-      try {
+  const rl = process.stdin.isTTY && (port === undefined || !relay) ? createInterface({ input: process.stdin, output: process.stdout }) : undefined;
+  try {
+    if (port === undefined) {
+      if (rl) {
         port = num('port', await ask(rl, 'Local port to expose', saved?.port), 1, 65535);
         host = host ?? (await ask(rl, 'Local host (loopback or private IP)', saved?.host ?? DEFAULTS.host));
-        relay = relay ?? (await ask(rl, 'Relay', saved?.relay ?? DEFAULTS.relay));
-      } finally {
-        rl.close();
+      } else if (saved) {
+        port = saved.port;
       }
-    } else if (saved) {
-      port = saved.port;
     }
+    if (port === undefined) fail('--port <number> is required (no saved config and no interactive terminal)');
+    host = host ?? saved?.host ?? DEFAULTS.host;
+    // Lock the target before asking about the relay: a refused target should fail first.
+    try {
+      target = lockTarget(host, port);
+    } catch (err) {
+      fail(err instanceof GuardError ? err.message : String(err));
+    }
+    if (!relay && rl) relay = await ask(rl, 'Relay WebSocket URL (wss://…)');
+  } finally {
+    rl?.close();
   }
-  if (port === undefined) fail('--port <number> is required (no saved config and no interactive terminal)');
+  if (!relay) {
+    fail('No relay configured. Pass --relay <wss_url> or set SERVLINK_RELAY_URL (the relay is remembered in config.json after the first connect).');
+  }
 
   const cfg: SavedConfig = {
     port,
-    host: host ?? saved?.host ?? DEFAULTS.host,
-    relay: relay ?? saved?.relay ?? DEFAULTS.relay,
+    host,
+    relay,
     maxRps: num('max-rps', values['max-rps'], 1, 10_000) ?? saved?.maxRps ?? DEFAULTS.maxRps,
     maxBodyMb: num('max-body-mb', values['max-body-mb'], 0.001, 1024) ?? saved?.maxBodyMb ?? DEFAULTS.maxBodyMb,
     wakeCmd: values['wake-cmd'] ?? saved?.wakeCmd,
     sleepCmd: values['sleep-cmd'] ?? saved?.sleepCmd,
     idleMinutes: num('idle-minutes', values['idle-minutes'], 1, 10_080) ?? saved?.idleMinutes ?? DEFAULTS.idleMinutes,
   };
-  if (!/^wss?:\/\//i.test(cfg.relay)) fail('--relay must be a ws:// or wss:// URL');
-  return { cfg, force: values.force ?? false };
+  if (!/^wss?:\/\//i.test(cfg.relay)) fail(`The relay must be a ws:// or wss:// URL (got "${cfg.relay}")`);
+  return { cfg, target, force: values.force ?? false };
 }
 
 async function cmdConnect(argv: string[]): Promise<void> {
@@ -136,13 +147,7 @@ async function cmdConnect(argv: string[]): Promise<void> {
   const permWarning = identityPermissionWarning();
   if (permWarning) out(`${c.orange('!')} ${permWarning}`);
 
-  const { cfg, force } = await resolveConnectConfig(argv);
-  let target;
-  try {
-    target = lockTarget(cfg.host, cfg.port);
-  } catch (err) {
-    fail(err instanceof GuardError ? err.message : String(err));
-  }
+  const { cfg, target, force } = await resolveConnectConfig(argv);
   const running = activeDaemon();
   if (running && running.pid !== process.pid && !force) {
     fail(`slink is already running (pid ${running.pid}, ${running.target}). Stop it first or pass --force.`);
@@ -264,12 +269,12 @@ function cmdLogs(argv: string[]): void {
 }
 
 function help(): void {
-  out(`${c.green('~>')} ${c.bold('slink')} ${c.dim(`v${VERSION}`)}  ${c.dim('servlink: expose a local port to Lapseed')}
+  out(`${c.green('~>')} ${c.bold('slink')} ${c.dim(`v${VERSION}`)}  ${c.dim('servlink: outbound Ed25519-authenticated server tunnel')}
 
   ${c.green('slink init')} [--node-id <id>] [--force]      create ~/.servlink/identity.json (Ed25519)
   ${c.green('slink connect')} --port <n> [options]          open the tunnel (prompts when flags are omitted)
       --host <ip>          127.0.0.1 | ::1 | localhost | explicit private IP   (default 127.0.0.1)
-      --relay <wss_url>    default wss://lapseed.app/tunnel
+      --relay <wss_url>    relay server tunnel endpoint; remembered after the first connect
       --max-rps <n>        local rate limit, default 30 (burst 3×)
       --max-body-mb <n>    local request body cap, default 5
       --wake-cmd "<cmd>"   run when the port refuses connections, then wait up to 10s
@@ -278,7 +283,7 @@ function help(): void {
   ${c.green('slink status')}                                 identity, saved target, daemon state
   ${c.green('slink logs')} [-n 50] [--no-follow]             tail sanitized request logs
 
-${c.dim('Env: SERVLINK_HOME (default ~/.servlink), NO_COLOR')}`);
+${c.dim('Env: SERVLINK_RELAY_URL (relay when --relay is omitted), SERVLINK_HOME (default ~/.servlink), NO_COLOR')}`);
 }
 
 async function main(): Promise<void> {

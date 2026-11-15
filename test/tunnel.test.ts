@@ -68,7 +68,7 @@ describe('slink tunnel', () => {
     const { relay, up } = await setup();
     const r = await relay.http({
       path: '/hello?x=1',
-      headers: { host: 'lapseed.app', 'x-forwarded-for': '6.6.6.6', 'x-real-ip': '6.6.6.6', 'x-forwarded-prefix': '/project/x', cookie: 'app=1', 'user-agent': 'ua' },
+      headers: { host: 'relay.example', 'x-forwarded-for': '6.6.6.6', 'x-real-ip': '6.6.6.6', 'x-forwarded-prefix': '/project/x', cookie: 'app=1', 'user-agent': 'ua' },
     });
     assert.equal(r.status, 200);
     const h = up!.seen.at(-1)!.headers;

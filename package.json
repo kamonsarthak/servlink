@@ -1,10 +1,10 @@
 {
   "name": "servlink",
-  "version": "1.0.0",
-  "description": "slink: outbound Ed25519-authenticated tunnel from your machine to Lapseed (lapseed.app), with local SSRF lock, rate/body guards and wake/sleep hooks",
+  "version": "1.0.1",
+  "description": "slink: zero-trust outbound Ed25519-authenticated server tunnel to any compatible relay server, with loopback target lock, local rate/body guards and wake/sleep hooks",
   "type": "module",
   "bin": {
-    "slink": "./dist/cli.js"
+    "slink": "dist/cli.js"
   },
   "main": "./dist/index.js",
   "exports": {
@@ -12,7 +12,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20.12"
@@ -25,12 +26,22 @@
   },
   "keywords": [
     "tunnel",
-    "lapseed",
+    "localhost",
+    "zero-trust",
     "reverse-proxy",
     "websocket",
     "ed25519"
   ],
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "author": "Sarthak Kamon <kamonsarthak@hotmail.com> (https://github.com/kamonsarthak)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kamonsarthak/servlink.git"
+  },
+  "homepage": "https://github.com/kamonsarthak/servlink#readme",
+  "bugs": {
+    "url": "https://github.com/kamonsarthak/servlink/issues"
+  },
   "dependencies": {
     "ws": "^8.23.0"
   },

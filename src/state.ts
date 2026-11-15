@@ -14,7 +14,6 @@ export interface SavedConfig {
 
 export const DEFAULTS = {
   host: '127.0.0.1',
-  relay: 'wss://lapseed.app/tunnel',
   maxRps: 30,
   maxBodyMb: 5,
   idleMinutes: 15,

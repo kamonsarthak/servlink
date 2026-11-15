@@ -7,7 +7,7 @@ import { NODE_ID_RE } from './protocol.js';
 export interface Identity {
   version: 1;
   node_id: string;
-  /** Raw 32-byte Ed25519 public key, hex. This is what Lapseed's `PUT /api/users/server` expects. */
+  /** Raw 32-byte Ed25519 public key, hex. This is the form to register with a relay. */
   public_key_hex: string;
   public_key_base64: string;
   public_key_pem: string;
@@ -65,7 +65,7 @@ export function privateKeyOf(id: Identity): KeyObject {
   return createPrivateKey(id.private_key_pem);
 }
 
-/** Answer Lapseed's challenge: Ed25519 over the UTF-8 nonce string, base64-encoded. */
+/** Answer the relay's challenge: Ed25519 over the UTF-8 nonce string, base64-encoded. */
 export function signChallenge(key: KeyObject, nonce: string): string {
   return sign(null, Buffer.from(nonce, 'utf8'), key).toString('base64');
 }

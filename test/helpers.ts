@@ -30,8 +30,8 @@ export async function until(cond: () => boolean, timeoutMs = 5000, label = 'cond
 }
 
 /**
- * Minimal Lapseed relay: issues the challenge, verifies the Ed25519 signature exactly like
- * the backend, then lets the test drive frames and collect replies by stream id.
+ * Minimal relay: issues the challenge, verifies the Ed25519 signature the way a real relay
+ * must, then lets the test drive frames and collect replies by stream id.
  */
 export class MockRelay {
   readonly wss: WebSocketServer;

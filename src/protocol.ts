@@ -1,6 +1,6 @@
 /**
- * slink <-> Lapseed tunnel wire protocol. Mirrors `src/modules/lease/protocol.ts` in the
- * Lapseed backend exactly: JSON text frames over one outbound WebSocket.
+ * slink <-> relay tunnel wire protocol: JSON text frames over one outbound WebSocket.
+ * Any relay that speaks these frames works; the README documents them for implementers.
  *
  * Handshake
  *   S→C  { type: "challenge", nonce: <64 hex chars>, server_time }
@@ -27,7 +27,7 @@
 
 export type HeaderMap = Record<string, string | string[]>;
 
-/** Frames the relay (Lapseed) sends to slink. */
+/** Frames the relay sends to slink. */
 export type RelayFrame =
   | { type: 'challenge'; nonce: string; server_time: number }
   | { type: 'auth_ok'; node_id: string }
@@ -62,7 +62,7 @@ export const RelayClose = {
   UNBOUND: 4410,
 } as const;
 
-/** Same rule Lapseed enforces in `PUT /api/users/server`. */
+/** Allowed node_id shape; relays should enforce the same rule when registering a node. */
 export const NODE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
 
 const STREAM_ID_RE = /^[A-Za-z0-9-]{1,64}$/;

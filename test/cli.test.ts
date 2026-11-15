@@ -9,10 +9,15 @@ import { MockRelay, startUpstream, until } from './helpers.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const home = mkdtempSync(join(tmpdir(), 'servlink-cli-'));
-const env = { ...process.env, SERVLINK_HOME: home, NO_COLOR: '1' };
+const env: NodeJS.ProcessEnv = { ...process.env, SERVLINK_HOME: home, NO_COLOR: '1' };
+delete env.SERVLINK_RELAY_URL;
 
 function slink(...args: string[]) {
-  const r = spawnSync(process.execPath, [CLI, ...args], { env, encoding: 'utf8', input: '' });
+  return slinkEnv({}, ...args);
+}
+
+function slinkEnv(extra: NodeJS.ProcessEnv, ...args: string[]) {
+  const r = spawnSync(process.execPath, [CLI, ...args], { env: { ...env, ...extra }, encoding: 'utf8', input: '' });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
@@ -30,7 +35,7 @@ describe('slink CLI (compiled dist/cli.js)', () => {
   let nodeId = '';
   let publicKey = '';
 
-  it('init creates a 0600 identity and prints what Lapseed needs', () => {
+  it('init creates a 0600 identity and prints what the relay needs', () => {
     const r = slink('init', '--node-id', 'cli-test-node');
     assert.equal(r.code, 0, r.out);
     const id = JSON.parse(readFileSync(join(home, 'identity.json'), 'utf8'));
@@ -39,7 +44,7 @@ describe('slink CLI (compiled dist/cli.js)', () => {
     assert.equal(nodeId, 'cli-test-node');
     assert.match(publicKey, /^[0-9a-f]{64}$/);
     assert.ok(r.out.includes(nodeId) && r.out.includes(publicKey));
-    assert.match(r.out, /PUT https:\/\/lapseed\.com\/api\/users\/server/);
+    assert.match(r.out, /register your node_id and Ed25519 public key with your relay/);
     if (process.platform !== 'win32') assert.equal(statSync(join(home, 'identity.json')).mode & 0o777, 0o600);
 
     const again = slink('init');
@@ -57,6 +62,12 @@ describe('slink CLI (compiled dist/cli.js)', () => {
     const noPort = slink('connect');
     assert.equal(noPort.code, 1);
     assert.match(noPort.out, /--port <number> is required/);
+    const noRelay = slink('connect', '--port', '3000');
+    assert.equal(noRelay.code, 1, 'no built-in default relay');
+    assert.match(noRelay.out, /No relay configured/);
+    const badRelay = slinkEnv({ SERVLINK_RELAY_URL: 'https://relay.example/tunnel' }, 'connect', '--port', '3000');
+    assert.equal(badRelay.code, 1);
+    assert.match(badRelay.out, /must be a ws:\/\/ or wss:\/\/ URL/);
   });
 
   it('status reports identity and an idle daemon', () => {
@@ -85,7 +96,10 @@ describe('slink CLI (compiled dist/cli.js)', () => {
       assert.match(status.out, /running · ONLINE/);
       assert.match(status.out, new RegExp(`target\\s+127\\.0\\.0\\.1:${up.port}`));
 
-      const second = slink('connect', '--port', String(up.port), '--relay', relay.url);
+      // --relay was persisted, so later calls resolve it from config.json without the flag.
+      assert.equal(JSON.parse(readFileSync(join(home, 'config.json'), 'utf8')).relay, relay.url);
+      assert.ok(status.out.includes(relay.url), 'status shows the saved relay');
+      const second = slink('connect', '--port', String(up.port));
       assert.equal(second.code, 1);
       assert.match(second.out, /already running/);
 
