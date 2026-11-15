@@ -1,0 +1,43 @@
+{
+  "name": "servlink",
+  "version": "1.0.0",
+  "description": "slink: outbound Ed25519-authenticated tunnel from your machine to Lapseed (lapseed.app), with local SSRF lock, rate/body guards and wake/sleep hooks",
+  "type": "module",
+  "bin": {
+    "slink": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && tsx --test --test-concurrency=1 test/*.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "tunnel",
+    "lapseed",
+    "reverse-proxy",
+    "websocket",
+    "ed25519"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "ws": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}
