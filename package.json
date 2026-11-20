@@ -1,6 +1,6 @@
 {
   "name": "servlink",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "slink: zero-trust outbound Ed25519-authenticated server tunnel to any compatible relay server, with loopback target lock, local rate/body guards and wake/sleep hooks",
   "type": "module",
   "bin": {
